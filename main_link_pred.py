@@ -340,41 +340,6 @@ def main_function(hidden_channels, dropout, drop_strategy, optimizer_name, loss_
 
     return later_log_data, best_epoch, best_tst_ap, best_tst_auc,best_tst_acc, execution_time
 
-def wandb_log_visualization(later_log_data, best_epoch, best_tst_ap, best_tst_auc, best_tst_acc, time):
-              today = date.today()
-              d1 = today.strftime("%d/%m/%Y")
-              now = datetime.now()
-              current_time = now.strftime("%H:%M:%S")
-              wandb.login(key="1d3f6720d42e8e526ab2b4a6ee29929f34fd2870")
-              run = wandb.init(project="XAI-DROP" + str(dataset_name) + str(architecture_name)+str(task),
-                               name="PROVA_XAI-DROP" + str(dataset_name) + "_" + str(architecture_name) + " " + str(
-                                      id) + str(drop_strategy) + d1 + current_time,
-                               config={
-                                      'drop_edge_pr': drop_edge_probability,
-                                      'drop_strategy': drop_strategy,
-                                      #'drop_node_pr': dropping_node_probability,
-                                      'hidden_channels': hidden_channels,
-                                      'dropout': dropout,
-                                      'architecture_name': architecture_name,
-                                      'lr': lr,
-                                      'weight_decay': weight_decay,
-                                      'loss_name': loss_name,
-                                      'optimizer_name': optimizer_name,
-                                      'num_epochs': num_epochs,
-                                      'early_stopping_metric': 'val_accuracy',
-                                      'threshold_confidence_value': threshold_confidence_value,
-                                       'confidence_strategy': confidence_strategy
-              })
-              wandb.log({'BEST_TST_AP-VAL_AUC-BASED': best_tst_ap}, step=0)
-              wandb.log({'BEST_TST_ACC-VAL_AUC-BASED': best_tst_acc}, step=0)
-
-              wandb.log({'BEST_TST_AUC-VAL_AUC-BASED': best_tst_auc}, step = 0)
-              wandb.log({'BEST_VAL_AUC-EPOCH': best_epoch}, step=0)
-              wandb.log({'TIME_IN_SECONDS': time}, step =0)
-              for i in range(num_epochs):
-                     for k in later_log_data.keys():
-                            wandb.log({k: later_log_data[k][i]}, step=i)
-              wandb.finish()
 
 for id in range(1,5):
     later_log_data, best_epoch, best_tst_ap, best_tst_auc, best_tst_acc, execution_time = main_function(hidden_channels = hidden_channels,
@@ -390,6 +355,3 @@ for id in range(1,5):
                                                            id = id,
                                                            threshold_confidence_value=threshold_confidence_value,
                                                            confidence_strategy=confidence_strategy)
-
-    if wandb_log:
-       wandb_log_visualization(later_log_data, best_epoch, best_tst_ap, best_tst_auc, best_tst_acc, execution_time)
