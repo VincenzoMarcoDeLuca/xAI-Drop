@@ -26,56 +26,10 @@ import time
 
 
 
-import wandb
 from datetime import datetime, date
 
 
-just_write_wandb = False
 
-
-def wandb_log_function():
-    today = date.today()
-    d1 = today.strftime("%d/%m/%Y")
-    now = datetime.now()
-    current_time = now.strftime("%H:%M:%S")
-    wandb.login(key="1d3f6720d42e8e526ab2b4a6ee29929f34fd2870")
-    run = wandb.init(project="XAI-DROP" + str(dataset_name) + str(architecture_name),
-                 name="PROVA_XAI-DROP" + str(dataset_name) + "_" + str(architecture_name) + " " + str(id) + str(
-                     drop_strategy) + d1 + current_time,
-                 config={
-                     'drop_edge_pr': dropout_edge_p,
-                     'drop_strategy': drop_strategy,
-                     'drop_node_pr': dropping_node_probability,
-                     'ID': id,
-                     'hidden_channels': hidden_channels,
-                     'dropout': dropout,
-                     'model_name': model_name,
-                     'lr': lr,
-                     'weight_decay': weight_decay,
-                     'loss_name': criterion_name,
-                     'optimizer_name': optimizer_name,
-                     'num_epochs': num_epochs,
-                     'early_stopping_metric': 'val_accuracy',
-                     'sparsity_value_in_sufficiency': sparsity_value,
-                     'sparsity_threshold_value':threshold_sparsity_value,
-                     'sparsity_strategy':sparsity_strategy,
-                     'confidence_sampling': confidence_sampling,
-                     'starting_drop_epoch': starting_drop_epoch,
-                     'confidence_strategy': confidence_strategy,
-                     'confidence_threshold': threshold_confidence_value
-                 })
-
-    for i in range(num_epochs):
-       for k in later_log_data.keys():
-          print(i, " ", k, " ", later_log_data[k][i])
-          try:
-              wandb.log({k: later_log_data[k][i]}, step=i)
-          except:
-              wandb.finish()
-
-
-before_wandb_file = True
-wandb_log = True
 later_log = True
 
 
@@ -203,7 +157,7 @@ dropout_edge_p = 0.5
 starting_drop_epoch = 0
 
 
-later_log_data = {'trn_loss':[],'val_loss':[], 'tst_loss':[], 'trn_accu':[], 'val_accu':[], 'tst_accu':[],
+later_log_data = {'trn_loss':[],'val_loss':[], 'trn_accu':[], 'val_accu':[],
                   'no_edges':[], 'no_nodes':[], 'mean_probability':[], 'std_probability':[],
                   'num_confident_nodes':[], 'mean_dropping':[], 'learning_rate':[],
                   'mean_confidence_nodes':[], 'std_confidence_nodes':[],
@@ -212,15 +166,6 @@ later_log_data = {'trn_loss':[],'val_loss':[], 'tst_loss':[], 'trn_accu':[], 'va
                   'mean_confident_nodes_faithfulness_sufficiency':[],'std_confident_nodes_faithfulness_sufficiency':[],
                   'mean_trn_confident_nodes_faithfulness_sufficiency':[], 'std_trn_confident_nodes_faithfulness_sufficiency':[],
                   'patience_val_acc':[]}
-
-
-if just_write_wandb:
-    with open("file_new.json", "r") as file:
-        later_log_data = json.load(file)
-        wandb_log_function()
-        exit(0)
-
-
 
 """
 assess_xai = False
@@ -294,19 +239,12 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
 
     another_best_val_acc = 0.0
     another_best_val_loss = float('inf')
-    another_best_tst_loss = 0.0
-    another_best_tst_acc = 0.0
     another_best_epoch = -1
 
     best_val_acc = 0.0
     best_val_loss = 0.0
     best_tst_loss = 0.0
-    best_tst_acc = 0.0
     best_epoch = -1
-    best_tst_val_acc = 0.0
-    best_tst_val_loss = 0.0
-    best_tst_tst_loss = 0.0
-    best_tst_tst_acc = 0.0
 
     #print("Questo e' id")
     #torch.cuda.manual_seed(id)
@@ -363,11 +301,9 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
                                 edge_mask_type="object")
         data.train_mask = data.train_mask.to('cpu')
         data.val_mask = data.val_mask.to('cpu')
-        data.test_mask = data.test_mask.to('cpu')
         data.x = data.x.to('cpu')
         data.edge_index = data.edge_index.to('cpu')
         data.y = data.y.to('cpu')
-        tst_res = test(model, data, data.test_mask, criterion, num_classes)
         print("Tst_res: ", tst_res)
         sparsity_expl = 0.25
         xai_file_name = "XAI_"+dataset_name + "_" + architecture_name + "_" + task + "_" + drop_strategy + "_model_"+str(id)
@@ -403,7 +339,6 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
       val_res = test(model, data, data.val_mask, criterion, num_classes)
       scheduler.step(val_res[0])
 
-      tst_res = test(model, data, data.test_mask, criterion, num_classes)
 
       """
       node_imp, explanation = get_explanation(explainer, all_node_idx, data.x, data.edge_index)
@@ -428,14 +363,6 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
           no_improvement_val_acc = no_improvement_val_acc+1
 
 
-      if tst_res[1] > best_tst_tst_acc:
-          best_tst_epoch = epoch
-          best_tst_tst_loss = tst_res[0]
-          best_tst_tst_acc = tst_res[1]
-          best_tst_val_loss = val_res[0]
-          best_tst_val_acc = val_res[1]
-          print("BEST TEST: ", tst_res[1])
-
       if val_res[0] < another_best_val_loss:
         another_best_epoch = epoch
         another_best_val_loss = val_res[0]
@@ -450,10 +377,8 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
           later_log_data['trn_trn_acc'].append(trn_trn_res[1])
           later_log_data['trn_loss'].append(trn_res[0])
           later_log_data['val_loss'].append(val_res[0])
-          later_log_data['tst_loss'].append(tst_res[0])
           later_log_data['trn_accu'].append(trn_res[1])
           later_log_data['val_accu'].append(val_res[1])
-          later_log_data['tst_accu'].append(tst_res[1])
           later_log_data['no_nodes'].append(no_nodes)
           later_log_data['no_edges'].append(no_edges)
           later_log_data['mean_probability'].append(mean_probability)
@@ -487,8 +412,8 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
               print("\n\n\n\n\n\n\n\nERRORE INSPIEGABILE\n\n\n\n\n")
 
       if epoch%1==0:
-          print(f"{epoch} ACC Trn: {trn_res[1]:.3f}, Val: {val_res[1]:.3f} Tst: {tst_res[1]:.3f} Trn_trn:{trn_trn_res[1]:.3f} "
-                f" LOS Trn: {trn_res[0]:.3f}, Val: {val_res[0]:.3f} Tst: {tst_res[0]:.3f} Trn_trn:{trn_trn_res[0]:.3f}"
+          print(f"{epoch} ACC Trn: {trn_res[1]:.3f}, Val: {val_res[1]:.3f} Trn_trn:{trn_trn_res[1]:.3f} "
+                f" LOS Trn: {trn_res[0]:.3f}, Val: {val_res[0]:.3f} Trn_trn:{trn_trn_res[0]:.3f}"
                 f" DR PR mean {mean_probability:.3f} std {std_probability:.3f}"
                 f" CONF mean {mean_confidence_nodes:.3f} std {std_confidence_nodes:.3f}"
                 f" Cnodes {num_confident_nodes} lr: {optimizer.param_groups[0]['lr']}"
@@ -500,69 +425,12 @@ def main_function(num_epochs, lr, weight_decay, dropout, use_bn, hidden_channels
                 f"Patience:{no_improvement_val_acc}")
     end = time.time()
     training_time = end-start
-    if wandb_log:
-
-        import wandb
-        from datetime import datetime, date
-
-        today = date.today()
-        d1 = today.strftime("%d/%m/%Y")
-        now = datetime.now()
-        current_time = now.strftime("%H:%M:%S")
-        wandb.login(key="1d3f6720d42e8e526ab2b4a6ee29929f34fd2870")
-        run = wandb.init(project="XAI-DROP"+str(dataset_name)+str(architecture_name),
-                         name="PROVA_XAI-DROP" +str(dataset_name)+"_"+ str(architecture_name)+ " " +str(id) + str(drop_strategy)+d1+current_time,
-                         config={
-                             'drop_edge_pr': dropout_edge_p,
-                             'drop_strategy': drop_strategy,
-                             'drop_node_pr': dropping_node_probability,
-                             'ID': id,
-                             'seed':seed,
-                             'hidden_channels': hidden_channels,
-                             'dropout': dropout,
-                             'model_name': model_name,
-                             'lr': lr,
-                             'weight_decay': weight_decay,
-                             'loss_name': criterion_name,
-                             'optimizer_name': optimizer_name,
-                             'num_epochs': num_epochs,
-                             'early_stopping_metric': 'val_accuracy',
-                             'sparsity_value_in_sufficiency': sparsity_value,
-                             'confidence_sampling': confidence_sampling,
-                             'starting_drop_epoch': starting_drop_epoch,
-                             'confidence_strategy': confidence_strategy,
-                             'confidence_threshold':threshold_confidence_value,
-                             'scheduler_name': scheduler_name,
-                             'scheduler_patience': scheduler_patience,
-                             'scheduler_factor': scheduler_factor,
-                             'scheduler_threeshold':scheduler_threshold,
-                             'confidence_criterion': confidence_criterion
-                         })
-
-        wandb.log({'BEST_TST_ACC-VAL_ACC-BASED':best_tst_acc}, step = 0)
-        wandb.log({'BEST_VAL_ACC-EPOCH':best_epoch}, step = 0)
-        wandb.log({'BEST_TST_ACC-VAL_LOSS-BASED':another_best_tst_acc}, step = 0)
-        wandb.log({'BEST_VAL_LOSS-EPOCH':another_best_epoch}, step = 0)
-        wandb.log({'BEST_TST_ACC-TST_ACC-BASED':best_tst_tst_acc}, step = 0)
-        wandb.log({'BEST_TST_ACC-EPOCH':best_tst_epoch}, step = 0)
-        wandb.log({'TRAINING_TIME': training_time}, step=0)
-        wandb.log({'NUM_EPOCHS':num_epochs}, step=0)
-        num_params = sum(p.numel() for p in model.parameters())
-        wandb.log({'NUM_PARAMS': num_params}, step=0)
-
-        for i in range(num_epochs):
-            for k in later_log_data.keys():
-                wandb.log({k: later_log_data[k][i]}, step=i)
-
-
-
-        wandb.finish()
     print("\n\n\n",id, " dropout: ", dropout_edge_p, " \nVAL ACC EARLY EPOCH: " , best_epoch,
           " TST: ", best_tst_loss, " ", best_tst_acc, " VAL: ", best_val_loss, " ",best_val_acc)
     print("\nVAL LOS EARLY EPOCH: ", another_best_epoch,
           " TST: ", another_best_tst_loss, " ", another_best_tst_acc, " VAL: ", another_best_val_loss, " ",another_best_val_acc)
-    print("\nTST ACC EARLY EPOCH: ", best_tst_epoch,
-          " TST: ", best_tst_tst_loss, " ", best_tst_tst_acc, " VAL: ", best_tst_val_loss, " ", best_tst_val_acc)
+    #print("\nTST ACC EARLY EPOCH: ", best_tst_epoch,
+    #      " TST: ", best_tst_tst_loss, " ", best_tst_tst_acc, " VAL: ", best_tst_val_loss, " ", best_tst_val_acc)
 
 
 
