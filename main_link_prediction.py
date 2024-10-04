@@ -5,7 +5,7 @@ from model.link_prediction import GCN_link_prediction, GAT_link_prediction,GIN_l
 from graphxai.explainers.grad import GradExplainer
 import torch
 import numpy as np
-from config import Selector
+from utils.config import Selector
 
 
 #FROM NESS: Node Embeddings from Static SubGraphs
