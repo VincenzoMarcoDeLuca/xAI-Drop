@@ -1,18 +1,9 @@
 import os
-
-import datatable as dt
-import numpy as np
-import pandas as pd
-import torch
 import torch_geometric.transforms as T
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from torch.utils.data import DataLoader, Dataset
 from torch_geometric.data import Data
 from torch_geometric.datasets import Planetoid, WebKB, WikipediaNetwork
-from torch_geometric.nn import GAE, VGAE, GCNConv
 from torch_geometric.seed import seed_everything as th_seed
-from typing import Any, Dict, List, Tuple
+from typing import Dict, Tuple
 
 
 class GraphLoader:
@@ -20,7 +11,7 @@ class GraphLoader:
     Data loader class for graph data.
     """
 
-    def __init__(self, seed, n_subgraphs, paths, device, dataset_name: str, kwargs: Dict[str, Any] = {}) -> None:
+    def __init__(self, seed, paths, device, dataset_name: str) -> None:
         """
         Initializes the GraphLoader.
 
@@ -35,18 +26,15 @@ class GraphLoader:
         """
         # Get config
         self.seed = seed
-        self.n_subgraphs = n_subgraphs
         # Set the seed
         th_seed(seed)
         # Set the paths
         self.paths = paths
         self.device =device
-        # data > dataset_name
-        file_path = os.path.join(self.paths["data"], dataset_name)
         # Get the datasets
-        self.train_data, self.validation_data, self.test_data = self.get_dataset(dataset_name, file_path)
+        self.train_data, self.validation_data, self.test_data = self.get_dataset(dataset_name)
 
-    def get_dataset(self, dataset_name: str, file_path: str) -> Tuple[Data, Data, Data]:
+    def get_dataset(self, dataset_name: str) -> Tuple[Data, Data, Data]:
         """
         Returns the training, validation, and test datasets.
 
@@ -64,7 +52,7 @@ class GraphLoader:
         """
 
         # Initialize Graph dataset class
-        self.graph_dataset = GraphDataset(paths = self.paths, device = self.device, datadir=file_path, dataset_name=dataset_name)
+        self.graph_dataset = GraphDataset(paths = self.paths, device = self.device, dataset_name=dataset_name)
 
         # Load Training, Validation, Test datasets
         train_data, val_data, test_data = self.graph_dataset._load_data()
@@ -98,7 +86,7 @@ class GraphDataset:
     Dataset class for graph data format.
     """
 
-    def __init__(self, paths, device, datadir: str, dataset_name: str) -> None:
+    def __init__(self, paths, device, dataset_name: str) -> None:
         """
         Initializes the GraphDataset.
 
@@ -127,7 +115,6 @@ class GraphDataset:
             Training, validation, and test datasets.
         """
         if self.dataset_name.lower() in ['cora', 'citeseer', 'pubmed']:
-            print("Hello, here we are!")
             # Get the dataset
             self.dataset = Planetoid(self.data_path, self.dataset_name, split="random", transform=self.transform)
         elif self.dataset_name.lower() in ['chameleon']:
