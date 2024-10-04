@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import torch.nn as nn
 from graphxai.explainers.grad import GradExplainer
-from config import Selector
+from utils.config import Selector
 
 config_path = r"config_cora_gin_node_cl.json"
 config = Selector(config_path).args
