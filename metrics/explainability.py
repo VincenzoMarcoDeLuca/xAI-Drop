@@ -1,25 +1,10 @@
 from torch_geometric.utils import k_hop_subgraph
-from torch_geometric.utils import subgraph
 import torch
-from torch.nn import Softmax, KLDivLoss
-from torch.nn.functional import log_softmax
-
+from torch.nn import Softmax
 import torch.nn.functional as F
 from math import ceil
 import numpy as np
 
-# Go through all objects tracked by the garbage collector
-"""
-import gc
-for obj in gc.get_objects():
-try:
-    if torch.is_tensor(obj):
-        if obj.is_cuda:
-            tensors_on_gpu.append(obj)
-            #print(f"Tensor on GPU: {obj.shape}, dtype: {obj.dtype}, device: {obj.device}")
-except Exception as e:
-    pass
-"""
 def acc_sufficiency(file_name):
     data_list_xai = []
     data_list_or = []
@@ -121,12 +106,6 @@ def kl_divergence(p: torch.Tensor, q: torch.Tensor, reduction: str = 'batchmean'
     return kl_div
 
 def node_ref_mapping(original_x, index_mapping):
-    """
-    mapped_x = torch.zeros((len(index_mapping.keys()), original_x.shape[1])).to('cuda:0')
-    # Perform the mapping
-    for old_index, new_index in index_mapping.items():
-        mapped_x[new_index] = original_x[old_index]
-    """
     mapped_x = torch.zeros(len(index_mapping.keys())).long().to('cuda:0')
     for old_index, new_index in index_mapping.items():
         mapped_x[new_index] = old_index
@@ -134,24 +113,13 @@ def node_ref_mapping(original_x, index_mapping):
     return  mapped_x
 
 def remove_output_edges(list_useless_nodes, edge_idx):
-    """
-    mask = torch.ones(edge_idx.shape[1], dtype = torch.bool).to('cuda:0')
-    for idx, edge in enumerate(zip(edge_idx[0,:], edge_idx[1,:])):
-        if edge[0] in list_useless_nodes:
-            mask[idx] = False
-    return mask
-    """
+
     useless_mask = torch.isin(edge_idx[0, :], list_useless_nodes)
     # Set the corresponding entries in the mask to False
     useless_mask = ~useless_mask
     return useless_mask
 
 def remove_bidirectional_edges(list_relevant_nodes, edge_idx):
-    #mask = torch.zeros(edge_idx.shape[1], dtype = torch.bool).to('cuda:0')
-    #for idx, edge in enumerate(zip(edge_idx[0,:], edge_idx[1,:])):
-    #    if edge[0] in list_relevant_nodes or edge[1] in list_relevant_nodes:
-    #        mask[idx] = True
-    #return mask
     source_mask = torch.isin(edge_idx[0, :], list_relevant_nodes)
     target_mask = torch.isin(edge_idx[1, :], list_relevant_nodes)
 
@@ -165,13 +133,10 @@ def measure_kl(tensor1, tensor2):
     suff_faithfulness = torch.exp(-(kl_div_value_mean))
     return suff_faithfulness
 
-def sufficiency_edges(model, expl_edge_idx, x, edge_index, edge_imp, explanation, threshold = 0.5, num_hops = 2, sparsity_value = 0.1, sparsity_strategy = 'percentage', sparsity_threshold =0.5):
+def sufficiency_edges(model, edge_imp, x, explanation, sparsity_value = 0.1):
     with torch.no_grad():
         model.eval()
-        ###Importanza degli edge del sottografo
-        edge_imp = explanation.edge_imp
 
-        ###Otteniamo k-hop subgraph
         khop_edge = explanation.enc_subgraph.edge_index
         khop_x = x[explanation.enc_subgraph.nodes]
 
@@ -181,22 +146,10 @@ def sufficiency_edges(model, expl_edge_idx, x, edge_index, edge_imp, explanation
 
         ###Mapping è l'edge_index nel train_data.edge_index originale
         edge_mapping = explanation.enc_subgraph.edge_mapping
-        ###Qual è l'indice dell'edge_index nel train_data.edge_index originale
-        ###nel enc_subgraph
 
+        _, mask = torch.topk(edge_imp, int(ceil(sparsity_value*len(edge_imp))))
 
-
-        if sparsity_strategy == 'percentage':
-            _, mask = torch.topk(edge_imp, int(ceil(sparsity_value*len(edge_imp))))
-        else:
-            print("The sparsity strategy: ", sparsity_strategy, " is not available")
-            exit(1)
-
-        try:
-            condition_mask = ~torch.isin(edge_mapping, mask)
-        except:
-            import pdb; pdb.set_trace()
-
+        condition_mask = ~torch.isin(edge_mapping, mask)
         mask = torch.unique(torch.cat((mask, edge_mapping[condition_mask])))
         subgraph_edges = explanation.enc_subgraph.edge_index[:, mask]
 
@@ -224,63 +177,25 @@ def sufficiency_edges(model, expl_edge_idx, x, edge_index, edge_imp, explanation
 
 
 ##N.B. Dovrebbe esistere qualche funzione per estrarre num_hops in automatico
-def sufficiency(model, node_idx, x, edge_index, node_imp, explanation, threshold = 0.5, num_hops = 2, sparsity_value = 0.1, sparsity_strategy = 'percentage', sparsity_threshold = 0.5):
-    #kl_loss = KLDivLoss()
+def sufficiency(model,  x, node_imp, explanation,  sparsity_value = 0.1):
+
     with torch.no_grad():
         model.eval()
         softmax_layer = Softmax(dim= -1)
 
-        """
-        khop_info = subset, sub_edge_index, mapping, _ = \
-          k_hop_subgraph([node_idx], num_hops, edge_index,
-                       relabel_nodes=True, num_nodes=x.shape[0])
-        """
         khop_info = explanation.enc_subgraph
-        ###Questo è il mapping fra nodi (PIù CONFIDENTI) nel grafo originale(node_idx) e nodi più CONFIDENTI nel k-hop
-        ###In poche parole, prendere i più confidenti nel grafo originale equivale a x[node_ix]
-        ###nel k-hop invece equivale a node_ref_mapping(x, exp.node_reference)[khop_info.mapping]
 
-        ###Indice dei nodi (confidenti) nel khop
         mapping = explanation.node_idx
 
-        if sparsity_strategy == 'percentage':
-            _, mask = torch.topk(node_imp, int(ceil(sparsity_value*len(node_imp))))
-        elif sparsity_strategy == 'threshold':
-            mask = torch.where(node_imp >= sparsity_threshold)[0]
-            #print("Percentage retained node xai: ", mask.shape[0], " ", node_imp.shape[0], " ", mask.shape[0]/node_imp.shape[0])
-        else:
-            print("Strategy for picking explanation: ", sparsity_strategy, " is not available")
-            exit(1)
-        explanation_sparsity = mask.shape[0]/node_imp.shape[0]
-        ###In mask c'è l'indice dei nodi ordinati, quindi node_imp[mask] è una lista ordinata
-        ###Per mappare mask agli indici originali nel grafo
-        ###su
-        """
-        list_useless_nodes = []
-        for mapping_node in mapping:
-            if mapping_node not in mask:
-               #print("This node is useless for the predictions! ", mapping_node)
-               mask = torch.cat((mask, mapping_node.reshape(-1)))
-               list_useless_nodes.append(mapping_node)
-        list_useless_nodes = torch.tensor(list_useless_nodes).to('cuda:0')
-        """
-        try:
-            condition_mask = ~torch.isin(mapping, mask)
-        except:
-            import pdb; pdb.set_trace()
-        list_useless_nodes = mapping[condition_mask]#torch.tensor([], device='cuda:0', dtype=mapping.dtype)#.reshape(-1)
+        _, mask = torch.topk(node_imp, int(ceil(sparsity_value*len(node_imp))))
 
-        """
-        for mapping_node in mapping:
-            if not torch.any(mapping_node == mask):
-                mapping_node = mapping_node.reshape(-1)
-                list_useless_nodes = torch.cat((list_useless_nodes, mapping_node))
-        """
+        explanation_sparsity = mask.shape[0]/node_imp.shape[0]
+
+        condition_mask = ~torch.isin(mapping, mask)
+        list_useless_nodes = mapping[condition_mask]
 
         mask = torch.cat((mask, list_useless_nodes))
-        #import pdb; pdb.set_trace()
 
-        ###Nodi non importanti non devono influenzare gli altri
         mask_filtered_edges = remove_output_edges(list_useless_nodes, khop_info.edge_index)
         filtered_edges = khop_info.edge_index[:,mask_filtered_edges]
         mask_filtered_edges = remove_bidirectional_edges(mask, filtered_edges)
@@ -296,35 +211,10 @@ def sufficiency(model, node_idx, x, edge_index, node_imp, explanation, threshold
         mapping_real_prediction = real_prediction
         mapping_real_prediction_all = softmax_layer(mapping_real_prediction)
         mapping_real_prediction = mapping_real_prediction_all[mapping]
-        """
-        ###In node classification, non possiamo non avere il nodo nella spiegazione
-        mapping_filtered = torch.tensor([torch.where(mask == mapping[i].item()) for i in range(len(mapping))])
-        mapping_filtered = mapping_filtered.reshape(-1)
-        whole_subgraph = x[subset]
-
-        # Filtering node features, questi sono i nodi d'interesse per il k_hop e che hanno una certa importanza
-        x_filtered = whole_subgraph[mask]
-
-        sub_edge_index = khop_info.edge_index
-
-        edge_index_filtered, _ = subgraph(mask, sub_edge_index, relabel_nodes=True)
-
-        pred_prob = model(x_filtered, edge_index_filtered)
-        """
-
-        #pred_original = model(whole_subgraph, sub_edge_index)
-
-        #pred_prob_original = softmax_layer(pred_original)
-        #actual_prediction = pred_prob_original[mapping]
-        #print("expl_prediction: ", expl_prediction, " actual_prediction", actual_prediction, " ", mapping_filtered, " ", mapping, " ", mask)
-
-        #kl_div_value = kl_divergence(mapping_real_prediction, mapping_expl_prediction, reduction='none')#batchmean')
-        #kl_div_value_mean = torch.mean(kl_div_value, dim=-1)
-        #suff_faithfulness = torch.exp(-(kl_div_value_mean))
 
         suff_faithfulness = measure_kl(mapping_real_prediction, mapping_expl_prediction)
 
-        return suff_faithfulness, khop_info.nodes[mapping], explanation_sparsity#, all_suff_faithfulness#_filtered
+        return suff_faithfulness, khop_info.nodes[mapping], explanation_sparsity
 
 def normalize(node_imp):
     node_imp = (node_imp - torch.min(node_imp))/(torch.max(node_imp)-torch.min(node_imp))
