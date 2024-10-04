@@ -9,4 +9,3 @@ class Dataset():
         if dataset_name == 'Cora' or dataset_name == 'CiteSeer' or dataset_name == 'PubMed':
             self.dataset = Planetoid(root=data_dir, name=dataset_name, split='public', transform=T.NormalizeFeatures())
 
-        data = self.dataset[0].to(device)
